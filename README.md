@@ -1,4 +1,4 @@
-![MetroDraw demo image](https://github.com/ThatsNoMoon/metro-draw/blob/e8fa5bfa2dec1f917a301dd0ed8afe7ad75c99a7/assets/misc/demo_screenshot.png?raw=true)
+![MetroDraw demo image](https://github.com/ThatsNoMoon/metro-draw/blob/69b8e6363023a3c85fc51ee175baa39c12189790/assets/misc/demo_screenshot.png?raw=true)
 
 # MetroDraw
 
