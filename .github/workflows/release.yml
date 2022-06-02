@@ -1,0 +1,93 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  create-release:
+    strategy:
+      matrix:
+        include:
+          - build: linux-amd64
+            os: ubuntu-latest
+            cross: false
+
+          - build: macos-amd64
+            os: macos-latest
+            cross: false
+
+          - build: windows-amd64
+            os: windows-latest
+            cross: false
+
+          - build: linux-aarch64
+            os: ubuntu-latest
+            cross: true
+            linker-package: gcc-aarch64-linux-gnu
+            linker: aarch64-linux-gnu-gcc
+            target: aarch64-unknown-linux-gnu
+
+          - build: macos-aarch64
+            os: macos-latest
+            cross: true
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Extract version from tag
+        id: version
+        uses: damienaicheh/extract-version-from-tag-action@v1.0.0
+
+      - name: Install cross-compiler
+        if: matrix.os == 'ubuntu-latest' && matrix.cross
+        run: |
+          sudo apt update
+          sudo apt install ${{ matrix.linker-package }}
+          mkdir -p .cargo
+          echo [target.${{ matrix.target }}] > .cargo/config.toml
+          echo linker = '"'${{ matrix.linker }}'"' >> .cargo/config.toml
+
+      - name: Install cross-compiling toolchain
+        if: matrix.cross
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        if: "!matrix.cross"
+        run: cargo build --release --verbose
+
+      - name: Build (linux cross)
+        if: matrix.os == 'ubuntu-latest' && matrix.cross
+        run: cargo build --release --verbose --target ${{ matrix.target }}
+        env:
+          CC: ${{ matrix.linker }}
+
+      - name: Build (mac cross)
+        if: matrix.os == 'macos-latest' && matrix.cross
+        run: cargo build --release --verbose --target ${{ matrix.target }}
+
+      - name: Archive executable
+        if: matrix.os != 'windows-latest' && !matrix.cross
+        working-directory: ./target/release
+        run: tar czvf ../../metro-draw-${{ matrix.build }}.tar.gz metro-draw
+
+      - name: Archive executable (cross)
+        if: matrix.os != 'windows-latest' && matrix.cross
+        working-directory: ./target/${{ matrix.target }}/release
+        run: tar czvf ../../../metro-draw-${{ matrix.build }}.tar.gz metro-draw
+
+      - name: Archive executable (windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: ./target/release
+        run: Compress-Archive -LiteralPath metro-draw.exe -DestinationPath ../../metro-draw-windows-amd64.zip
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: metro-draw-*
+          draft: true
+          prerelease: ${{ env.PRE_RELEASE != ''}}
