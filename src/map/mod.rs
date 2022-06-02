@@ -14,32 +14,44 @@
 
 pub(crate) mod view;
 
-use iced::{pure::widget::Canvas, Point};
+use std::collections::HashMap;
+
+use iced::{pure::widget::Canvas, Color, Point};
+use petgraph::{graph::NodeIndex, visit::EdgeRef, Undirected};
 
 use self::view::MapView;
-use crate::{EditMode, Message};
+use crate::{color::ColorExt, EditMode, Message};
 
-pub(crate) type StationIndex = usize;
-pub(crate) type LineIndex = usize;
+type Index = u16;
+
+pub(crate) type StationIndex = NodeIndex<Index>;
+pub(crate) type LineIndex = Index;
+
+type Graph = petgraph::Graph<Station, Segment, Undirected, Index>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Map {
-	stations: Vec<Station>,
+	graph: Graph,
 	lines: Vec<Line>,
 }
 
 impl Default for Map {
 	fn default() -> Self {
 		Self {
-			stations: vec![],
-			lines: vec![Line { segments: vec![] }; 6],
+			graph: Graph::with_capacity(0, 0),
+			lines: [0x33bbff, 0x3cbe3c, 0xff714d, 0xbf60bf, 0xff9600, 0xffd700]
+				.into_iter()
+				.map(|c| Line {
+					color: Color::from_rgb32(c),
+				})
+				.collect(),
 		}
 	}
 }
 
 impl Map {
 	pub(crate) fn add_station(&mut self, station: Station) {
-		self.stations.push(station);
+		self.graph.add_node(station);
 	}
 
 	pub(crate) fn add_segment(
@@ -48,84 +60,65 @@ impl Map {
 		start: StationIndex,
 		end: StationIndex,
 	) {
-		self.lines[line].segments.push(Segment {
+		self.graph.add_edge(
 			start,
-			interpolation: Interpolation::Auto(InterpolationDirection::Auto),
 			end,
-		})
+			Segment {
+				line,
+				interpolation: Interpolation::Auto(
+					InterpolationDirection::Auto,
+				),
+			},
+		);
 	}
 
 	pub(crate) fn remove_station(&mut self, index: StationIndex) {
-		self.stations.remove(index);
+		let mut to_rejoin = HashMap::new();
 
-		for line in &mut self.lines {
-			let mut including_segments = line
-				.segments
-				.iter()
-				.enumerate()
-				.filter(|(_, seg)| seg.start == index || seg.end == index);
-
-			let (start_seg, start_station, interpolation) =
-				match including_segments.next() {
-					Some((
-						i,
-						&Segment {
-							start,
-							end,
-							interpolation,
-						},
-					)) => {
-						if end == index {
-							(i, start, interpolation)
-						} else {
-							(i, end, interpolation)
-						}
-					}
-					None => continue,
-				};
-
-			let (end_seg, end_station) = match including_segments.next() {
-				Some((i, &Segment { start, end, .. })) => {
-					if end == index {
-						(i, start)
-					} else {
-						(i, end)
-					}
-				}
-				None => {
-					line.segments.remove(start_seg);
-					continue;
-				}
+		for edge in self.graph.edges(index) {
+			let line = edge.weight().line;
+			let interpolation = edge.weight().interpolation;
+			let endpoint = if edge.source() == index {
+				edge.target()
+			} else {
+				edge.source()
 			};
 
-			if including_segments.next().is_some() {
-				line.segments
-					.retain(|seg| seg.start != index && seg.end != index);
-			} else {
-				line.segments.remove(end_seg);
-				line.segments.remove(start_seg);
-				line.segments.push(Segment {
-					start: start_station,
-					interpolation,
-					end: end_station,
-				})
+			match to_rejoin.get(&line).copied() {
+				None => {
+					to_rejoin.insert(line, Ok((endpoint, None, interpolation)));
+				}
+				Some(Ok((a, None, i))) => {
+					to_rejoin.insert(line, Ok((a, Some(endpoint), i)));
+				}
+				Some(Ok((_, Some(_), _))) => {
+					to_rejoin.insert(line, Err(()));
+				}
+				Some(Err(())) => (),
 			}
 		}
 
-		for line in &mut self.lines {
-			for segment in &mut line.segments {
-				if segment.start > index {
-					segment.start -= 1;
-				}
-				if segment.end > index {
-					segment.end -= 1;
-				}
-			}
+		self.graph.remove_node(index);
+
+		for (line, rejoin) in to_rejoin {
+			let (a, b, interpolation) = match rejoin {
+				Ok((a, Some(b), i)) => (a, b, i),
+				_ => continue,
+			};
+
+			self.graph.add_edge(
+				a,
+				b,
+				Segment {
+					line,
+					interpolation,
+				},
+			);
 		}
 	}
 
 	pub(crate) fn clear(&mut self) {
-		*self = Self::default();
+		self.graph.clear();
 	}
 }
 
@@ -135,21 +128,14 @@ pub(crate) struct Station {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Line {
-	segments: Vec<Segment>,
+struct Line {
+	color: Color,
 }
 
 #[derive(Debug, Clone)]
 struct Segment {
-	start: StationIndex,
+	line: LineIndex,
 	interpolation: Interpolation,
-	end: StationIndex,
-}
-
-impl Segment {
-	fn contains(&self, a: StationIndex, b: StationIndex) -> bool {
-		self.start == a && self.end == b || self.start == b && self.end == a
-	}
 }
 
 #[derive(Debug, Clone, Copy)]

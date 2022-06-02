@@ -11,3 +11,4 @@ iced_futures = { version = "0.4", features = ["tokio"] }
 iced_native = "0.5"
 iced_pure = "0.2"
 ordered-float = "3.0"
+petgraph = "0.6"

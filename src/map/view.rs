@@ -82,13 +82,6 @@ const STATION_OUTER_SIZE: f32 = 20.0;
 
 const GRID_SIZE: f32 = 50.0;
 
-const LINE_COLORS: &[u32] =
-	&[0x33bbff, 0x3cbe3c, 0xff714d, 0xbf60bf, 0xff9600, 0xffd700];
-
-fn line_color(line: LineIndex) -> Color {
-	Color::from_rgb32(LINE_COLORS[line % LINE_COLORS.len()])
-}
-
 const DRAG_RANGE: f32 = 5.0;
 
 impl Program<Message> for MapView<'_> {
@@ -155,20 +148,28 @@ impl Program<Message> for MapView<'_> {
 				}
 			}
 
-			for (i, line) in self.map.lines.iter().enumerate() {
-				for segment in &line.segments {
-					let start = self.map.stations[segment.start].position;
-					let end = self.map.stations[segment.end].position;
-					self.draw_segment(
-						start,
-						end,
-						segment.interpolation,
-						line_color(i),
-						frame,
-					);
-				}
-			}
+			let graph = &self.map.graph;
 
+			for index in graph.edge_indices() {
+				let (start, end) = self
+					.map
+					.graph
+					.edge_endpoints(index)
+					.expect("Edge index from iteration not in graph");
+
+				let start = graph[start].position;
+				let end = graph[end].position;
+
+				let segment = &graph[index];
+
+				self.draw_segment(
+					start,
+					end,
+					segment.interpolation,
+					self.map.lines[segment.line as usize].color,
+					frame,
+				);
+			}
 			if let (
 				DragState::Dragging(ClickStart::Station(s), _),
 				EditMode::Line,
@@ -176,15 +177,15 @@ impl Program<Message> for MapView<'_> {
 			) = (state.dragging, self.edit_mode, cursor.position())
 			{
 				self.draw_segment(
-					self.map.stations[s].position,
+					graph[s].position,
 					p - (bounds.position() - Point::ORIGIN) - state.pan_offset,
 					Interpolation::Auto(InterpolationDirection::Auto),
-					line_color(self.selected_line),
+					self.map.lines[self.selected_line as usize].color,
 					frame,
 				)
 			}
 
-			for station in &self.map.stations {
+			for station in graph.node_weights() {
 				frame.fill(
 					&Path::circle(station.position, STATION_OUTER_SIZE),
 					Color::from_rgb32(0xd8e0ef),
@@ -244,7 +245,7 @@ impl Program<Message> for MapView<'_> {
 						match start_pos {
 							ClickStart::Station(s) => {
 								let d = magnitude(
-									self.map.stations[s].position - panned,
+									self.map.graph[s].position - panned,
 								);
 								if d > DRAG_RANGE {
 									let inside =
@@ -274,11 +275,13 @@ impl Program<Message> for MapView<'_> {
 									self.find_station_at(panned)
 								{
 									if now_inside != start
-										&& !self.map.lines[self.selected_line]
-											.segments
-											.iter()
-											.any(|s| {
-												s.contains(start, now_inside)
+										&& !self
+											.map
+											.graph
+											.edges_connecting(start, now_inside)
+											.any(|edge| {
+												edge.weight().line
+													== self.selected_line
 											}) {
 										state.dragging = DragState::Dragging(
 											ClickStart::Station(now_inside),
@@ -295,7 +298,7 @@ impl Program<Message> for MapView<'_> {
 							}
 							Some(s) => {
 								if magnitude(
-									self.map.stations[s].position - panned,
+									self.map.graph[s].position - panned,
 								) > STATION_OUTER_SIZE
 								{
 									state.dragging = DragState::Dragging(
@@ -311,10 +314,10 @@ impl Program<Message> for MapView<'_> {
 						state.pan_offset = initial_offset + (p - start);
 
 						let (min_x, max_x) = min_max(
-							self.map.stations.iter().map(|s| s.position.x),
+							self.map.graph.node_weights().map(|s| s.position.x),
 						);
 						let (min_y, max_y) = min_max(
-							self.map.stations.iter().map(|s| s.position.y),
+							self.map.graph.node_weights().map(|s| s.position.y),
 						);
 
 						state.pan_offset.x = state
@@ -481,12 +484,11 @@ impl Program<Message> for MapView<'_> {
 impl MapView<'_> {
 	fn find_station_at(&self, p: Point) -> Option<StationIndex> {
 		self.map
-			.stations
-			.iter()
-			.enumerate()
-			.rev()
-			.map(|(i, s)| {
-				let d = NotNan::new(magnitude(s.position - p)).unwrap();
+			.graph
+			.node_indices()
+			.map(|i| {
+				let d = NotNan::new(magnitude(self.map.graph[i].position - p))
+					.unwrap();
 				(i, d)
 			})
 			.min_by_key(|&(_, d)| d)
