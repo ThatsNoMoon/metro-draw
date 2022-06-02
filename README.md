@@ -1,3 +1,5 @@
+![MetroDraw demo image](https://github.com/ThatsNoMoon/metro-draw/blob/e8fa5bfa2dec1f917a301dd0ed8afe7ad75c99a7/assets/misc/demo_screenshot.png?raw=true)
+
 # MetroDraw
 
 MetroDraw is a WIP desktop app for drawing transit maps.
