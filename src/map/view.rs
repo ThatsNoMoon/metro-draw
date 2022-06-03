@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{color::ColorExt, EditMode, Message};
 
-pub(crate) struct MapView<'m> {
+pub(super) struct MapView<'m> {
 	map: &'m Map,
 	edit_mode: EditMode,
 	selected_line: LineIndex,
@@ -53,7 +53,7 @@ impl<'m> MapView<'m> {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ViewState {
+pub(super) struct ViewState {
 	cache: Cache,
 	dragging: DragState,
 	pan_offset: Vector,

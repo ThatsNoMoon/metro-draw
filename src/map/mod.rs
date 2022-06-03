@@ -12,11 +12,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-pub(crate) mod view;
+mod view;
 
 use std::collections::HashMap;
 
-use iced::{pure::widget::Canvas, Color, Point};
+use iced::{
+	pure::widget::{canvas::Program, Canvas},
+	Color, Point,
+};
 use petgraph::{graph::NodeIndex, visit::EdgeRef, Undirected};
 
 use self::view::MapView;
@@ -156,7 +159,7 @@ impl Map {
 		&self,
 		edit_mode: EditMode,
 		selected_line: LineIndex,
-	) -> Canvas<Message, MapView<'_>> {
+	) -> Canvas<Message, impl Program<Message> + '_> {
 		Canvas::new(MapView::new(self, edit_mode, selected_line))
 	}
 }
