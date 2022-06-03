@@ -12,10 +12,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::f32::consts::PI;
+
 use iced::{
 	canvas::{
-		event::Status, Cache, Cursor, Event, Frame, Geometry, LineCap,
-		LineDash, LineJoin, Path, Stroke,
+		event::Status, path::Builder, Cache, Cursor, Event, Frame, Geometry,
+		LineCap, LineDash, LineJoin, Path, Stroke,
 	},
 	keyboard::{self, KeyCode, Modifiers},
 	mouse,
@@ -83,6 +85,8 @@ const STATION_OUTER_SIZE: f32 = 20.0;
 const GRID_SIZE: f32 = 50.0;
 
 const DRAG_RANGE: f32 = 5.0;
+
+const TURN_RADIUS: f32 = 40.0;
 
 impl Program<Message> for MapView<'_> {
 	type State = ViewState;
@@ -510,9 +514,7 @@ impl MapView<'_> {
 
 				let mid = interpolate_auto(start, end, d);
 
-				b.line_to(mid);
-
-				b.line_to(end);
+				arc_turn(start, mid, end, TURN_RADIUS, b);
 			}
 		});
 
@@ -589,4 +591,61 @@ fn interpolate_auto(
 			}
 		}
 	}
+}
+
+fn arc_turn(
+	start: Point,
+	mid: Point,
+	end: Point,
+	radius: f32,
+	b: &mut Builder,
+) {
+	let start_segment_angle = f32::atan2(mid.y - start.y, mid.x - start.x);
+
+	let start_angle = start_segment_angle + PI / 2.0;
+
+	let mid_angle = start_angle - PI / 8.0;
+
+	let end_angle = start_angle - PI / 4.0;
+
+	let radius = radius.min(magnitude(end - mid));
+
+	let flipped_x = (end.x - start.x).signum();
+	let flipped_y = -(end.y - start.y).signum();
+
+	let vertical = start.x == mid.x;
+
+	let (flipped_x, flipped_y) = if vertical {
+		(-flipped_x, -flipped_y)
+	} else {
+		(flipped_x, flipped_y)
+	};
+
+	let origin = Point::new(
+		mid.x - radius * mid_angle.cos().abs() * flipped_x,
+		mid.y - radius * mid_angle.sin().abs() * flipped_y,
+	);
+
+	let arc_start = Point::new(
+		origin.x + radius * start_angle.cos().abs() * flipped_x,
+		origin.y + radius * start_angle.sin().abs() * flipped_y,
+	);
+
+	let arc_end = Point::new(
+		origin.x + radius * end_angle.cos().abs() * flipped_x,
+		origin.y + radius * end_angle.sin().abs() * flipped_y,
+	);
+
+	b.line_to(arc_start);
+
+	if !vertical && flipped_x == flipped_y || vertical && flipped_x != flipped_y
+	{
+		b.arc_to(arc_start, arc_end, radius);
+	} else {
+		b.move_to(arc_end);
+		b.arc_to(arc_end, arc_start, radius);
+		b.move_to(arc_end);
+	}
+
+	b.line_to(end);
 }
