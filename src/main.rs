@@ -41,7 +41,7 @@ enum Message {
 	SwitchEditMode(EditMode),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditMode {
 	None,
 	Station,
